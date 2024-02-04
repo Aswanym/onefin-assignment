@@ -1,12 +1,41 @@
 from django.contrib.auth import authenticate
-from rest_framework import status
+from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from decouple import config
 from utility.retry_mechanism import RetryStrategy
-from .serializers import UserCreationSerializer
+from .serializers import (
+    UserCreationSerializer,
+    CollectionSerializer,
+    GetCollectionSerializer,
+)
+from .models import Collection, Movies
+from utility.movie_helper import TopFavouriteGenres
 # Create your views here.
+
+
+class LoginUser(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        user = authenticate(
+            username=request.data["username"], password=request.data["password"]
+        )  # authenticate user
+        if user is not None:
+            token = RefreshToken.for_user(
+                user
+            )  # for authenticated user jwt token is created
+            # refresh_token = str(token)
+            access_token = str(token.access_token)
+            return Response(
+                {"access_token": access_token}, status=status.HTTP_201_CREATED
+            )
+        return Response(
+            {"message": "User authentication failed"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class RegisterUser(APIView):
@@ -57,6 +86,8 @@ class RegisterUser(APIView):
     }
     ```
     """
+
+    permission_classes = [AllowAny]
 
     def post(self, request):
         serializer = UserCreationSerializer(data=request.data)
@@ -142,7 +173,6 @@ class MovieList(APIView):
     """
 
     def get(self, request):
-
         url = config("MOVIE_API_URL")
         username = config("API_CLIENT")
         password = config("API_CLIENT_SECRET")
@@ -151,3 +181,89 @@ class MovieList(APIView):
             url, username=username, password=password, verify=False
         )
         return Response(api_res)
+
+
+class MovieCollection(generics.ListCreateAPIView):
+    """
+        A view for handling the retrieval and creation of movie collections.
+
+        - GET: Retrieve a user's movie collections along with their top 3 favorite genres.
+          Response includes serialized collection data and favorite genres.
+
+        - POST: Create a new movie collection for the authenticated user.
+          Request data should include title, description, and a list of movies
+          with UUID, title, description, and genres.
+
+        Parameters:
+        - `request`: The HTTP request object.
+        - `*args`: Additional positional arguments.
+        - `**kwargs`: Additional keyword arguments.
+
+        Returns:
+        - For GET: Serialized data of user's collections and top 3 favorite genres.
+        - For POST: A response containing the UUID of the newly created collection.
+
+        Example GET Response:
+        ```
+        {
+            "is_success": True,
+            "data": {"collection": [...serialized collection data...]},
+            "favourite_genres": ["Horror", "Action", "Comedy"]
+        }
+        ```
+
+        Example POST Response:
+        ```
+        {
+            "collection_uuid": "ae5ef1d4-5d02-4f11-8d61-8d3b5dfc4b8b"
+        }
+        ```
+
+        Raises:
+        - HTTP 200 OK for successful GET requests.
+        - HTTP 201 Created for successful POST requests.
+        """
+
+    def get(self, request, *args, **kwargs):
+        collections = Collection.objects.filter(user=request.user)
+        serializer = GetCollectionSerializer(collections, many=True)
+
+        collection_list = {"collection": serializer.data}
+        favourite_genres = (
+            TopFavouriteGenres().top_favourite_genres_from_user_movie_collection(
+                collections, n=3
+            )
+        )
+
+        context = {
+            "is_success": True,
+            "data": collection_list,
+            "favourite_genres": favourite_genres,
+        }
+        return Response(context, status=status.HTTP_200_OK)
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        new_collection = Collection.objects.create(
+            title=data["title"], description=data["description"], user=request.user
+        )  # create a collection
+        new_collection.save()
+
+        # iterate through list of movies, if movies not in db create, else get that movie obj and add it to the
+        # above created collection.
+        for movie in data["movies"]:
+            if Movies.objects.filter(uuid=movie["uuid"]).exists():
+                movie_obj = Movies.objects.get(uuid=movie["uuid"])
+            else:
+                movie_obj = Movies.objects.create(
+                    uuid=movie["uuid"],
+                    title=movie["title"],
+                    description=movie["description"],
+                    genres=movie["genres"],
+                )
+
+            new_collection.movies.add(movie_obj)
+
+        serializer = CollectionSerializer(new_collection)
+        context = {"collection_uuid": serializer.data["uuid"]}
+        return Response(context, status=status.HTTP_201_CREATED)
