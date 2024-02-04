@@ -2,7 +2,7 @@ from django.contrib.auth import authenticate
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import AllowAny
 from rest_framework_simplejwt.tokens import RefreshToken
 from decouple import config
 from utility.retry_mechanism import RetryStrategy
@@ -10,9 +10,11 @@ from .serializers import (
     UserCreationSerializer,
     CollectionSerializer,
     GetCollectionSerializer,
+    MovieSerializer,
 )
 from .models import Collection, Movies
 from utility.movie_helper import TopFavouriteGenres
+
 # Create your views here.
 
 
@@ -185,44 +187,44 @@ class MovieList(APIView):
 
 class MovieCollection(generics.ListCreateAPIView):
     """
-        A view for handling the retrieval and creation of movie collections.
+    A view for handling the retrieval and creation of movie collections.
 
-        - GET: Retrieve a user's movie collections along with their top 3 favorite genres.
-          Response includes serialized collection data and favorite genres.
+    - GET: Retrieve a user's movie collections along with their top 3 favorite genres.
+      Response includes serialized collection data and favorite genres.
 
-        - POST: Create a new movie collection for the authenticated user.
-          Request data should include title, description, and a list of movies
-          with UUID, title, description, and genres.
+    - POST: Create a new movie collection for the authenticated user.
+      Request data should include title, description, and a list of movies
+      with UUID, title, description, and genres.
 
-        Parameters:
-        - `request`: The HTTP request object.
-        - `*args`: Additional positional arguments.
-        - `**kwargs`: Additional keyword arguments.
+    Parameters:
+    - `request`: The HTTP request object.
+    - `*args`: Additional positional arguments.
+    - `**kwargs`: Additional keyword arguments.
 
-        Returns:
-        - For GET: Serialized data of user's collections and top 3 favorite genres.
-        - For POST: A response containing the UUID of the newly created collection.
+    Returns:
+    - For GET: Serialized data of user's collections and top 3 favorite genres.
+    - For POST: A response containing the UUID of the newly created collection.
 
-        Example GET Response:
-        ```
-        {
-            "is_success": True,
-            "data": {"collection": [...serialized collection data...]},
-            "favourite_genres": ["Horror", "Action", "Comedy"]
-        }
-        ```
+    Example GET Response:
+    ```
+    {
+        "is_success": True,
+        "data": {"collection": [...serialized collection data...]},
+        "favourite_genres": ["Horror", "Action", "Comedy"]
+    }
+    ```
 
-        Example POST Response:
-        ```
-        {
-            "collection_uuid": "ae5ef1d4-5d02-4f11-8d61-8d3b5dfc4b8b"
-        }
-        ```
+    Example POST Response:
+    ```
+    {
+        "collection_uuid": "ae5ef1d4-5d02-4f11-8d61-8d3b5dfc4b8b"
+    }
+    ```
 
-        Raises:
-        - HTTP 200 OK for successful GET requests.
-        - HTTP 201 Created for successful POST requests.
-        """
+    Raises:
+    - HTTP 200 OK for successful GET requests.
+    - HTTP 201 Created for successful POST requests.
+    """
 
     def get(self, request, *args, **kwargs):
         collections = Collection.objects.filter(user=request.user)
@@ -267,3 +269,103 @@ class MovieCollection(generics.ListCreateAPIView):
         serializer = CollectionSerializer(new_collection)
         context = {"collection_uuid": serializer.data["uuid"]}
         return Response(context, status=status.HTTP_201_CREATED)
+
+
+class MovieCollectionDetails(generics.RetrieveUpdateDestroyAPIView):
+    """
+        A view for retrieving, updating, and deleting a movie collection.
+
+        - GET: Retrieve details of a movie collection, including title, description, and associated movies.
+
+        - PUT/PATCH: Update a movie collection's details and associated movies. The request should include
+          optional fields such as 'title', 'description', and 'movies' (a list of movies with UUID, title,
+          description, and other details).
+
+        - DELETE: Delete a movie collection.
+
+        Parameters:
+        - `request`: The HTTP request object.
+        - `*args`: Additional positional arguments.
+        - `**kwargs`: Additional keyword arguments.
+
+        Returns:
+        - For GET: Serialized data of the movie collection and associated movies.
+        - For PUT/PATCH: A response indicating that the movie collection was updated.
+        - For DELETE: A response indicating that the movie collection was successfully deleted.
+
+        Example GET Response:
+        ```
+        {
+            "title": "Collection title",
+            "description": "Collection description",
+            "movies": [
+                {"uuid": "movie_uuid_1", "title": "Movie 1", "description": "description 1", "genre":genre1},
+                {"uuid": "movie_uuid_2", "title": "Movie 2", "description": "description 2", "genre":genre2},
+                ...
+            ]
+        }
+        ```
+
+        Example PUT/PATCH Request:
+        ```
+        {
+            "title": "Updated Collection",
+            "description": "Updated description",
+            "movies": [
+                {"uuid": "movie_uuid_1", "title": "Updated Movie 1", "description": "Updated description 1", ...},
+                {"uuid": "movie_uuid_2", "title": "Updated Movie 2", "description": "Updated description 2", ...},
+                ...
+            ]
+        }
+        ```
+
+        Example PUT/PATCH Response:
+        ```
+        {"details": "updated"}
+        ```
+
+        Example DELETE Response:
+        ```
+        {"detail": "Successfully deleted."}
+        ```
+        """
+    queryset = Collection.objects.all()
+    serializer_class = CollectionSerializer
+    lookup_field = "uuid"
+
+    def get(self, request, *args, **kwargs):
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+
+        # include needed data in the context
+        movies_data = MovieSerializer(instance.movies.all(), many=True).data
+        context = {
+            "title": serializer.data["title"],
+            "description": serializer.data["description"],
+            "movies": movies_data,
+        }
+        return Response(context, status=status.HTTP_200_OK)
+
+    def update(self, request, *args, **kwargs):
+        if "movies" in request.data:
+            movies = request.data.pop("movies")
+            for movie in movies:
+                movie_instance = Movies.objects.get(uuid=movie["uuid"])
+                movie_serializer = MovieSerializer(
+                    movie_instance, data=movie, partial=True
+                )
+                movie_serializer.is_valid(raise_exception=True)
+                self.perform_update(movie_serializer)
+
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response({"details": "updated"})
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response(
+            {"detail": "Successfully deleted."}, status=status.HTTP_204_NO_CONTENT
+        )
