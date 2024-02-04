@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate
+from django.core.cache import cache
 from rest_framework import status, generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -273,62 +274,63 @@ class MovieCollection(generics.ListCreateAPIView):
 
 class MovieCollectionDetails(generics.RetrieveUpdateDestroyAPIView):
     """
-        A view for retrieving, updating, and deleting a movie collection.
+    A view for retrieving, updating, and deleting a movie collection.
 
-        - GET: Retrieve details of a movie collection, including title, description, and associated movies.
+    - GET: Retrieve details of a movie collection, including title, description, and associated movies.
 
-        - PUT/PATCH: Update a movie collection's details and associated movies. The request should include
-          optional fields such as 'title', 'description', and 'movies' (a list of movies with UUID, title,
-          description, and other details).
+    - PUT/PATCH: Update a movie collection's details and associated movies. The request should include
+      optional fields such as 'title', 'description', and 'movies' (a list of movies with UUID, title,
+      description, and other details).
 
-        - DELETE: Delete a movie collection.
+    - DELETE: Delete a movie collection.
 
-        Parameters:
-        - `request`: The HTTP request object.
-        - `*args`: Additional positional arguments.
-        - `**kwargs`: Additional keyword arguments.
+    Parameters:
+    - `request`: The HTTP request object.
+    - `*args`: Additional positional arguments.
+    - `**kwargs`: Additional keyword arguments.
 
-        Returns:
-        - For GET: Serialized data of the movie collection and associated movies.
-        - For PUT/PATCH: A response indicating that the movie collection was updated.
-        - For DELETE: A response indicating that the movie collection was successfully deleted.
+    Returns:
+    - For GET: Serialized data of the movie collection and associated movies.
+    - For PUT/PATCH: A response indicating that the movie collection was updated.
+    - For DELETE: A response indicating that the movie collection was successfully deleted.
 
-        Example GET Response:
-        ```
-        {
-            "title": "Collection title",
-            "description": "Collection description",
-            "movies": [
-                {"uuid": "movie_uuid_1", "title": "Movie 1", "description": "description 1", "genre":genre1},
-                {"uuid": "movie_uuid_2", "title": "Movie 2", "description": "description 2", "genre":genre2},
-                ...
-            ]
-        }
-        ```
+    Example GET Response:
+    ```
+    {
+        "title": "Collection title",
+        "description": "Collection description",
+        "movies": [
+            {"uuid": "movie_uuid_1", "title": "Movie 1", "description": "description 1", "genre":genre1},
+            {"uuid": "movie_uuid_2", "title": "Movie 2", "description": "description 2", "genre":genre2},
+            ...
+        ]
+    }
+    ```
 
-        Example PUT/PATCH Request:
-        ```
-        {
-            "title": "Updated Collection",
-            "description": "Updated description",
-            "movies": [
-                {"uuid": "movie_uuid_1", "title": "Updated Movie 1", "description": "Updated description 1", ...},
-                {"uuid": "movie_uuid_2", "title": "Updated Movie 2", "description": "Updated description 2", ...},
-                ...
-            ]
-        }
-        ```
+    Example PUT/PATCH Request:
+    ```
+    {
+        "title": "Updated Collection",
+        "description": "Updated description",
+        "movies": [
+            {"uuid": "movie_uuid_1", "title": "Updated Movie 1", "description": "Updated description 1", ...},
+            {"uuid": "movie_uuid_2", "title": "Updated Movie 2", "description": "Updated description 2", ...},
+            ...
+        ]
+    }
+    ```
 
-        Example PUT/PATCH Response:
-        ```
-        {"details": "updated"}
-        ```
+    Example PUT/PATCH Response:
+    ```
+    {"details": "updated"}
+    ```
 
-        Example DELETE Response:
-        ```
-        {"detail": "Successfully deleted."}
-        ```
-        """
+    Example DELETE Response:
+    ```
+    {"detail": "Successfully deleted."}
+    ```
+    """
+
     queryset = Collection.objects.all()
     serializer_class = CollectionSerializer
     lookup_field = "uuid"
@@ -369,3 +371,17 @@ class MovieCollectionDetails(generics.RetrieveUpdateDestroyAPIView):
         return Response(
             {"detail": "Successfully deleted."}, status=status.HTTP_204_NO_CONTENT
         )
+
+
+class RequestCount(APIView):
+    def get(self, request, *args, **kwargs):
+        request_count = cache.get("request_count")
+        context = {"requests": request_count}
+        return Response(context, status=status.HTTP_200_OK)
+
+
+class RequestCountRest(APIView):
+    def post(self, request, *args, **kwargs):
+        cache.set("request_count", 0)
+        context = {"message": "request count reset successfully"}
+        return Response(context, status=status.HTTP_200_OK)
