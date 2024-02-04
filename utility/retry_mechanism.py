@@ -20,7 +20,7 @@ class RetryStrategy(object):
 
         # Create a new session object
         session = requests.Session()
-        session.mount('http://', adapter)
+        session.mount("http://", adapter)
 
         # Make a request using the session object
         response = session.get(url, auth=(username, password), verify=verify)
@@ -28,12 +28,8 @@ class RetryStrategy(object):
         if response.status_code == 200:
             data = response.json()
         else:
-            data = {"message": "Failed to load movies, please try again.",
-                    "status_code": response.status_code
-                    }
+            data = {
+                "message": "Failed to load movies, please try again.",
+                "status_code": response.status_code,
+            }
         return data
-
-
-
-
-
