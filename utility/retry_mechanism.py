@@ -4,9 +4,58 @@ from urllib3.util import Retry
 
 
 class RetryStrategy(object):
+    """
+        A class providing a retry mechanism for making HTTP requests with exponential backoff.
+
+        Usage:
+        ------
+        To use the retry mechanism, create an instance of this class and call the
+        `retry_mechanism` method with the desired parameters.
+
+        Example:
+        --------
+        ```python
+        retry_strategy = RetryStrategy()
+        response_data = retry_strategy.retry_mechanism(
+            url='https://example.com/api/data',
+            username='your_username',
+            password='your_password',
+            verify='path/to/certificate.pem'
+        )
+        ```
+
+        Attributes:
+        -----------
+        None
+
+        Methods:
+        --------
+        retry_mechanism(url, username=None, password=None, verify=None):
+            Performs an HTTP GET request to the specified URL with retry logic based on
+            predefined retry strategy parameters.
+
+        """
 
     @staticmethod
     def retry_mechanism(url, username=None, password=None, verify=None):
+
+        """
+                Performs an HTTP GET request to the specified URL with retry logic based on
+                predefined retry strategy parameters.
+
+                Parameters:
+                -----------
+                url (str): The URL to make the HTTP request to.
+                username (str, optional): The username for authentication.
+                password (str, optional): The password for authentication.
+                verify (str, optional): Path to the CA certificate file for SSL verification.
+
+                Returns:
+                --------
+                dict: A dictionary containing the response data. If the request is successful (HTTP status code 200),
+                the response data is parsed from JSON. Otherwise, a dictionary with an error message and status code is returned.
+
+                """
 
         #  Define retry strategy
         retry_strategy = Retry(
